@@ -103,6 +103,7 @@ function modal(title, body) {
 let state = null;
 let dirty = false;
 let activeTab = 'header';
+let session = {};
 const openSections = new Set();
 const openItems = new Set();
 
@@ -986,10 +987,12 @@ function settingsTab() {
     h('div', { class: 'panel' },
       h('h3', { text: 'เปลี่ยนรหัสผ่าน' }),
       h('p', { class: 'hint', text: 'รหัสที่ใช้เข้าหลังบ้านนี้' }),
+      session.canChangePassword === false ? h('div', { class: 'msg msg-warn' },
+        'เว็บนี้รันบน Vercel รหัสผ่านเก็บไว้ที่ Environment Variable — เปลี่ยนได้ที่ Vercel → Settings → Environment Variables → ADMIN_PASSWORD แล้วกด Redeploy') : null,
       pwMsg,
-      wrapField('รหัสผ่านปัจจุบัน', pwCurrent),
-      wrapField('รหัสผ่านใหม่ (อย่างน้อย 8 ตัว)', pwNext),
-      h('button', {
+      session.canChangePassword === false ? null : wrapField('รหัสผ่านปัจจุบัน', pwCurrent),
+      session.canChangePassword === false ? null : wrapField('รหัสผ่านใหม่ (อย่างน้อย 8 ตัว)', pwNext),
+      session.canChangePassword === false ? null : h('button', {
         class: 'btn btn-primary btn-sm', type: 'button',
         onclick: async () => {
           pwMsg.innerHTML = '';
@@ -1124,7 +1127,7 @@ function showLogin(message) {
 }
 
 async function boot() {
-  const session = await api('/api/session');
+  session = await api('/api/session');
   if (!session.authed) { showLogin(); return; }
   state = await api('/api/data');
   $('#login').classList.add('hidden');
