@@ -1,4 +1,4 @@
-import { renderPage, FONTS, ICONS, SOCIAL_PLATFORMS, SECTION_TYPES } from '/shared/render.mjs';
+import { renderPage, FONTS, ICONS, SOCIAL_PLATFORMS, SHOP_PLATFORMS, SECTION_TYPES } from '/shared/render.mjs';
 
 /* ----------------------------------------------------------- utilities */
 
@@ -54,11 +54,55 @@ function toast(message, kind = '') {
   toastTimer = setTimeout(() => el.classList.remove('show'), 2200);
 }
 
+/** Secondary fields live behind a toggle so the common case stays short. */
+function advanced(label, ...fields) {
+  const kids = fields.flat().filter(Boolean);
+  if (!kids.length) return null;
+  const box = h('details', { class: 'adv' }, h('summary', { text: label || 'ตัวเลือกเพิ่มเติม' }));
+  return fill(box, ...kids);
+}
+
+/** A row of mutually exclusive choices — lighter than a <select> for 2-4 options. */
+function segField(obj, key, label, options, opts = {}) {
+  const row = h('div', { class: 'seg' });
+  for (const [value, text] of options) {
+    const btn = h('button', {
+      class: `seg-b${String(obj[key] ?? options[0][0]) === String(value) ? ' active' : ''}`, type: 'button',
+      onclick: () => {
+        obj[key] = value;
+        row.querySelectorAll('.seg-b').forEach((n) => n.classList.remove('active'));
+        btn.classList.add('active');
+        touch();
+        opts.onChange?.(value);
+      },
+    }, text);
+    row.append(btn);
+  }
+  return wrapField(label, row, opts.sub);
+}
+
+function modal(title, body) {
+  const close = () => overlay.remove();
+  const overlay = h('div', {
+    class: 'overlay',
+    onclick: (e) => { if (e.target === overlay) close(); },
+  }, h('div', { class: 'sheet' },
+    h('div', { class: 'sheet-head' },
+      h('h3', { text: title }),
+      h('button', { class: 'btn btn-ghost btn-icon', type: 'button', onclick: close }, '✕')),
+    h('div', { class: 'sheet-body' }, body)));
+  document.addEventListener('keydown', function esc(e) {
+    if (e.key === 'Escape') { close(); document.removeEventListener('keydown', esc); }
+  });
+  document.body.append(overlay);
+  return close;
+}
+
 /* --------------------------------------------------------------- state */
 
 let state = null;
 let dirty = false;
-let activeTab = 'sections';
+let activeTab = 'header';
 const openSections = new Set();
 const openItems = new Set();
 
@@ -231,60 +275,128 @@ function iconField(obj, key, label) {
 
 /* ------------------------------------------------------- item editors */
 
+/** Nested editor: the shops one catalog product links out to. */
+function shopLinksEditor(item) {
+  item.links ||= [];
+  const wrap = h('div', { class: 'sub-list' });
+  const paint = () => {
+    wrap.innerHTML = '';
+    item.links.forEach((link, i) => {
+      wrap.append(h('div', { class: 'sub-row' },
+        selectField(link, 'platform', null, SHOP_PLATFORMS, {
+          onChange: (v) => {
+            const found = SHOP_PLATFORMS.find(([k]) => k === v);
+            if (found && !link.label) { link.label = found[1]; paint(); }
+          },
+        }),
+        textField(link, 'label', null, { placeholder: 'ข้อความบนปุ่ม' }),
+        textField(link, 'url', null, { placeholder: 'https://…' }),
+        h('button', {
+          class: 'btn btn-sm btn-ghost btn-icon', type: 'button', title: 'ลบ',
+          onclick: () => { item.links.splice(i, 1); touch(); paint(); },
+        }, '🗑')));
+    });
+    wrap.append(h('button', {
+      class: 'btn btn-sm', type: 'button',
+      onclick: () => {
+        item.links.push({ id: uid('sl'), platform: 'shopee', label: 'Shopee', url: '', visible: true });
+        touch();
+        paint();
+      },
+    }, '+ เพิ่มช่องทางขาย'));
+  };
+  paint();
+  return wrapField('ช่องทางสั่งซื้อ', wrap, 'ใส่ได้หลายร้าน — ถ้าใส่ช่องเดียวจะกลายเป็นปุ่มเต็มกว้าง');
+}
+
 const ITEM_FIELDS = {
   links: (item, rerender) => [
     textField(item, 'title', 'ชื่อปุ่ม', { placeholder: 'เช่น ติดต่องาน : ทาง LINE OA' }),
-    textField(item, 'subtitle', 'คำอธิบายใต้ชื่อ', { placeholder: 'ไม่ใส่ก็ได้' }),
     textField(item, 'url', 'ลิงก์', { placeholder: 'https://…' }),
+    segField(item, 'iconType', 'ไอคอน', [
+      ['icon', 'ไอคอน'], ['image', 'รูป'], ['emoji', 'อีโมจิ'], ['none', 'ไม่มี'],
+    ], { onChange: rerender }),
+    item.iconType === 'image' ? imageField(item, 'image', null)
+      : item.iconType === 'emoji' ? textField(item, 'emoji', null, { placeholder: '🔥' })
+        : item.iconType === 'none' ? null : iconField(item, 'icon', null),
+    advanced('ตัวเลือกเพิ่มเติม',
+      textField(item, 'subtitle', 'คำอธิบายใต้ชื่อ'),
+      textField(item, 'badge', 'ป้ายเล็ก (badge)', { placeholder: 'เช่น ใหม่' }),
+      checkField(item, 'highlight', 'เน้นปุ่มนี้ (ตีกรอบสีหลัก)')),
+  ],
+  catalog: (item) => [
+    imageField(item, 'image', 'รูปสินค้า'),
+    textField(item, 'title', 'ชื่อสินค้า'),
     h('div', { class: 'grid2' },
-      selectField(item, 'iconType', 'แบบไอคอน', [
-        ['icon', 'ไอคอนสำเร็จรูป'], ['image', 'รูปภาพ'], ['emoji', 'อีโมจิ'], ['none', 'ไม่มีไอคอน'],
-      ], { onChange: rerender }),
-      textField(item, 'badge', 'ป้ายเล็ก (badge)', { placeholder: 'เช่น ใหม่' })),
-    item.iconType === 'image' ? imageField(item, 'image', 'รูปไอคอน')
-      : item.iconType === 'emoji' ? textField(item, 'emoji', 'อีโมจิ', { placeholder: '🔥' })
-        : item.iconType === 'none' ? null : iconField(item, 'icon', 'เลือกไอคอน'),
-    checkField(item, 'highlight', 'เน้นปุ่มนี้ (ตีกรอบสีหลัก)'),
+      textField(item, 'price', 'ราคา', { placeholder: '199' }),
+      textField(item, 'comparePrice', 'ราคาก่อนลด', { placeholder: '299' })),
+    shopLinksEditor(item),
+    advanced('ตัวเลือกเพิ่มเติม',
+      areaField(item, 'description', 'คำอธิบายสั้น', { rows: 2 }),
+      textField(item, 'badge', 'ป้ายมุมรูป', { placeholder: 'NEW / SALE' })),
   ],
   cards: (item) => [
-    imageField(item, 'image', 'รูปการ์ด', { sub: 'แนะนำรูปแนวนอน อัตราส่วนราว 4:3' }),
-    areaField(item, 'title', 'หัวข้อ', { rows: 2, placeholder: 'ชื่อสินค้า / ชื่อคลาส' }),
-    areaField(item, 'subtitle', 'คำอธิบาย', { rows: 2 }),
-    h('div', { class: 'grid3' },
-      textField(item, 'price', 'ราคา', { placeholder: 'เช่น 1,290.-' }),
-      textField(item, 'badge', 'ป้ายเล็ก', { placeholder: 'ขายดี' }),
-      textField(item, 'cta', 'ข้อความปุ่ม', { placeholder: 'กดสั่งเลย' })),
+    imageField(item, 'image', 'รูปการ์ด'),
+    textField(item, 'title', 'หัวข้อ', { placeholder: 'ชื่อสินค้า / ชื่อคลาส' }),
     textField(item, 'url', 'ลิงก์', { placeholder: 'https://…' }),
+    advanced('ตัวเลือกเพิ่มเติม',
+      areaField(item, 'subtitle', 'คำอธิบาย', { rows: 2 }),
+      h('div', { class: 'grid3' },
+        textField(item, 'price', 'ราคา', { placeholder: '1,290.-' }),
+        textField(item, 'badge', 'ป้ายเล็ก', { placeholder: 'ขายดี' }),
+        textField(item, 'cta', 'ข้อความปุ่ม', { placeholder: 'กดสั่งเลย' }))),
   ],
   gallery: (item) => [
     imageField(item, 'image', 'รูป'),
-    textField(item, 'caption', 'คำบรรยาย'),
-    textField(item, 'url', 'ลิงก์ (ไม่ใส่ก็ได้)'),
+    advanced('ตัวเลือกเพิ่มเติม',
+      textField(item, 'caption', 'คำบรรยายบนรูป'),
+      textField(item, 'url', 'กดแล้วไปที่ลิงก์')),
   ],
-  video: (item) => [
-    textField(item, 'title', 'ชื่อคลิป'),
-    textField(item, 'url', 'ลิงก์ YouTube', { sub: 'ใส่ลิงก์ปกติ, Shorts หรือ youtu.be ก็ได้' }),
+  media: (item) => [
+    textField(item, 'url', 'ลิงก์', { placeholder: 'วางลิงก์ที่ก๊อปมาได้เลย' }),
+    advanced('ตัวเลือกเพิ่มเติม', textField(item, 'title', 'คำบรรยายใต้คลิป')),
+  ],
+  list: (item) => [
+    h('div', { class: 'grid2' },
+      textField(item, 'label', 'หัวข้อ', { placeholder: 'เช่น ที่อยู่ร้าน' }),
+      textField(item, 'value', 'ข้อความ', { placeholder: 'เช่น 123 ถ.สุขุมวิท' })),
+    iconField(item, 'icon', 'ไอคอน'),
+    advanced('ตัวเลือกเพิ่มเติม',
+      textField(item, 'url', 'กดแล้วไปที่ลิงก์', { sub: 'เบอร์โทรใช้ tel:0812345678 • แผนที่ใส่ลิงก์ Google Maps' })),
   ],
   socials: (item) => [
     selectField(item, 'platform', 'แพลตฟอร์ม', SOCIAL_PLATFORMS),
     textField(item, 'url', 'ลิงก์ / อีเมล', { placeholder: 'https://… หรือ name@mail.com' }),
-    textField(item, 'label', 'ชื่อเรียก (สำหรับ accessibility)'),
+    advanced('ตัวเลือกเพิ่มเติม', textField(item, 'label', 'ชื่อเรียก (สำหรับ accessibility)')),
   ],
 };
 
-function newItem(type) {
+/** Which item editor a section type uses. */
+const ITEM_KIND = {
+  links: 'links', catalog: 'catalog', cards: 'cards', gallery: 'gallery', list: 'list', socials: 'socials',
+  video: 'media', tiktok: 'media', vimeo: 'media', spotify: 'media', soundcloud: 'media', applemusic: 'media',
+};
+
+function newItem(kind) {
   const base = { id: uid('it'), visible: true };
-  if (type === 'links') return { ...base, title: 'ปุ่มใหม่', subtitle: '', url: '', iconType: 'icon', icon: 'link' };
-  if (type === 'cards') return { ...base, title: 'รายการใหม่', subtitle: '', image: '', url: '', cta: 'ดูเลย' };
-  if (type === 'gallery') return { ...base, image: '', caption: '', url: '' };
-  if (type === 'video') return { ...base, title: '', url: '' };
-  if (type === 'socials') return { ...base, platform: 'instagram', url: '', label: '' };
+  if (kind === 'links') return { ...base, title: 'ปุ่มใหม่', subtitle: '', url: '', iconType: 'icon', icon: 'link' };
+  if (kind === 'catalog') {
+    return { ...base, title: 'สินค้าใหม่', description: '', price: '', comparePrice: '', image: '', badge: '',
+      links: [{ id: uid('sl'), platform: 'shopee', label: 'Shopee', url: '', visible: true }] };
+  }
+  if (kind === 'cards') return { ...base, title: 'รายการใหม่', subtitle: '', image: '', url: '', cta: 'ดูเลย' };
+  if (kind === 'gallery') return { ...base, image: '', caption: '', url: '' };
+  if (kind === 'media') return { ...base, title: '', url: '' };
+  if (kind === 'list') return { ...base, icon: 'phone', label: '', value: '', url: '' };
+  if (kind === 'socials') return { ...base, platform: 'instagram', url: '', label: '' };
   return base;
 }
 
-function itemLabel(item, type) {
-  if (type === 'socials') return item.label || item.platform || 'โซเชียล';
-  if (type === 'gallery') return item.caption || 'รูปภาพ';
+function itemLabel(item, kind) {
+  if (kind === 'socials') return item.label || item.platform || 'โซเชียล';
+  if (kind === 'gallery') return item.caption || 'รูปภาพ';
+  if (kind === 'list') return item.label || item.value || 'รายการ';
+  if (kind === 'media') return item.title || item.url || 'ยังไม่ได้ใส่ลิงก์';
   return (item.title || '').replace(/\s+/g, ' ').trim() || 'ยังไม่มีชื่อ';
 }
 
@@ -376,65 +488,187 @@ function itemListEditor(owner, type, { addLabel = 'เพิ่มรายก�
 
 function newSection(type) {
   const base = { id: uid('sec'), type, visible: true, title: '', subtitle: '' };
-  if (type === 'links') return { ...base, title: 'ลิงก์ของฉัน', style: 'list', items: [newItem('links')] };
-  if (type === 'cards') return { ...base, title: 'แนะนำ', layout: 'alternate', columns: 1, items: [newItem('cards')] };
-  if (type === 'gallery') return { ...base, title: 'แกลเลอรี', columns: 2, ratio: 'square', items: [newItem('gallery')] };
-  if (type === 'video') return { ...base, title: 'คลิปล่าสุด', items: [newItem('video')] };
-  if (type === 'text') return { ...base, heading: 'หัวข้อ', body: 'ข้อความของคุณ', align: 'center' };
-  if (type === 'socials') return { ...base, title: '', items: [newItem('socials')] };
-  if (type === 'embed') return { ...base, title: '', url: '', height: 420 };
-  if (type === 'spacer') return { ...base, height: 24, divider: true };
-  return base;
+  const kind = ITEM_KIND[type];
+  switch (type) {
+    case 'links': return { ...base, title: 'ลิงก์ของฉัน', style: 'list', items: [newItem(kind)] };
+    case 'catalog': return { ...base, title: 'สินค้าของเรา', columns: 2, currency: 'THB', items: [newItem(kind)] };
+    case 'cards': return { ...base, title: 'แนะนำ', layout: 'alternate', columns: 1, items: [newItem(kind)] };
+    case 'gallery': return { ...base, title: '', display: 'grid', columns: 2, ratio: 'square', size: 'large', items: [newItem(kind)] };
+    case 'video': return { ...base, title: 'คลิปล่าสุด', items: [newItem(kind)] };
+    case 'tiktok': case 'vimeo': case 'spotify': case 'soundcloud': case 'applemusic':
+      return { ...base, items: [newItem(kind)] };
+    case 'contact':
+      return { ...base, name: '', role: '', org: '', phone: '', email: '', website: '', address: '',
+        note: '', avatar: '', vcard: true, saveLabel: 'บันทึกลงรายชื่อติดต่อ' };
+    case 'list': return { ...base, title: 'ข้อมูลติดต่อ', items: [newItem(kind)] };
+    case 'text': return { ...base, heading: 'หัวข้อ', body: 'ข้อความของคุณ', align: 'center' };
+    case 'socials': return { ...base, items: [newItem(kind)] };
+    case 'embed': return { ...base, url: '', height: 420 };
+    case 'spacer': return { ...base, height: 24, divider: true };
+    default: return base;
+  }
+}
+
+/** The "Add block" gallery — one entry per ready-made block preset. */
+const ART = {
+  btn1: '<rect x="8" y="7" width="32" height="7" rx="3.5"/><rect x="8" y="18" width="32" height="7" rx="3.5"/><rect x="8" y="29" width="32" height="7" rx="3.5"/>',
+  btn2: '<rect x="6" y="9" width="16" height="8" rx="4"/><rect x="26" y="9" width="16" height="8" rx="4"/><rect x="6" y="25" width="16" height="8" rx="4"/><rect x="26" y="25" width="16" height="8" rx="4"/>',
+  icons: '<circle cx="12" cy="21" r="6"/><circle cx="24" cy="21" r="6"/><circle cx="36" cy="21" r="6"/>',
+  catalog: '<rect x="6" y="6" width="16" height="12" rx="2"/><rect x="26" y="6" width="16" height="12" rx="2"/><rect x="6" y="21" width="11" height="2.5" rx="1.2"/><rect x="26" y="21" width="11" height="2.5" rx="1.2"/><rect x="6" y="27" width="7" height="3" rx="1.5"/><rect x="26" y="27" width="7" height="3" rx="1.5"/><rect x="6" y="34" width="16" height="4" rx="2"/><rect x="26" y="34" width="16" height="4" rx="2"/>',
+  cards: '<rect x="5" y="11" width="18" height="20" rx="3"/><rect x="27" y="14" width="16" height="3" rx="1.5"/><rect x="27" y="21" width="12" height="2.5" rx="1.2"/><rect x="27" y="27" width="14" height="4" rx="2"/>',
+  grid2: '<rect x="7" y="7" width="14" height="14" rx="2.5"/><rect x="27" y="7" width="14" height="14" rx="2.5"/><rect x="7" y="25" width="14" height="14" rx="2.5"/><rect x="27" y="25" width="14" height="14" rx="2.5"/>',
+  grid3: '<rect x="6" y="8" width="9" height="9" rx="2"/><rect x="19" y="8" width="9" height="9" rx="2"/><rect x="32" y="8" width="9" height="9" rx="2"/><rect x="6" y="21" width="9" height="9" rx="2"/><rect x="19" y="21" width="9" height="9" rx="2"/><rect x="32" y="21" width="9" height="9" rx="2"/>',
+  sliderL: '<rect x="6" y="8" width="26" height="26" rx="3"/><rect x="36" y="8" width="10" height="26" rx="3"/>',
+  sliderS: '<rect x="4" y="13" width="16" height="16" rx="3"/><rect x="24" y="13" width="16" height="16" rx="3"/><rect x="44" y="13" width="6" height="16" rx="3"/>',
+  single: '<rect x="12" y="6" width="24" height="30" rx="3"/>',
+  list: '<rect x="6" y="11" width="22" height="4" rx="2"/><circle cx="38" cy="13" r="4"/><rect x="6" y="26" width="22" height="4" rx="2"/><circle cx="38" cy="28" r="4"/>',
+  text: '<rect x="8" y="9" width="10" height="3" rx="1.5"/><rect x="8" y="17" width="32" height="3" rx="1.5"/><rect x="8" y="24" width="32" height="3" rx="1.5"/><rect x="8" y="31" width="22" height="3" rx="1.5"/>',
+  frame: '<rect x="6" y="9" width="36" height="26" rx="3"/><rect x="6" y="9" width="36" height="7" rx="3"/>',
+  spacer: '<rect x="6" y="10" width="36" height="3" rx="1.5"/><rect x="6" y="30" width="36" height="3" rx="1.5"/>',
+};
+
+const BLOCK_GROUPS = [
+  { name: 'ลิงก์', blocks: [
+    { label: 'ปุ่มลิงก์', sub: '1 คอลัมน์', art: 'btn1', make: () => ({ ...newSection('links'), style: 'list' }) },
+    { label: 'ปุ่มลิงก์', sub: '2 คอลัมน์', art: 'btn2', make: () => ({ ...newSection('links'), style: 'grid' }) },
+    { label: 'ไอคอนลิงก์', sub: 'แถวไอคอนกลม', art: 'icons', make: () => newSection('socials') },
+  ] },
+  { name: 'รูปภาพ / สินค้า', blocks: [
+    { label: 'แคตตาล็อกสินค้า', sub: 'ราคา • คำอธิบาย • ลิงก์หลายร้าน', art: 'catalog', badge: 'ใหม่', wide: true, make: () => newSection('catalog') },
+    { label: 'การ์ดป้ายยา', sub: 'รูปสลับซ้าย–ขวา', art: 'cards', make: () => newSection('cards') },
+    { label: 'ตารางรูป', sub: '2 คอลัมน์', art: 'grid2', make: () => ({ ...newSection('gallery'), display: 'grid', columns: 2 }) },
+    { label: 'ตารางรูป', sub: '3 คอลัมน์', art: 'grid3', make: () => ({ ...newSection('gallery'), display: 'grid', columns: 3 }) },
+    { label: 'สไลด์รูป', sub: 'รูปใหญ่ เลื่อนข้าง', art: 'sliderL', make: () => ({ ...newSection('gallery'), display: 'slider', size: 'large' }) },
+    { label: 'สไลด์รูป', sub: 'จัตุรัส เลื่อนข้าง', art: 'sliderS', make: () => ({ ...newSection('gallery'), display: 'slider', size: 'square' }) },
+    { label: 'รูปเดี่ยว', sub: 'ขนาดใหญ่', art: 'single', make: () => ({ ...newSection('gallery'), display: 'grid', columns: 1, ratio: 'auto' }) },
+  ] },
+  { name: 'ข้อความ', blocks: [
+    { label: 'รายการ', sub: 'ที่อยู่ / เบอร์โทร', art: 'list', make: () => newSection('list') },
+    { label: 'ข้อความ', sub: 'หัวข้อ + ย่อหน้า', art: 'text', make: () => newSection('text') },
+  ] },
+  { name: 'อื่น ๆ', blocks: [
+    { label: 'YouTube', sub: 'ฝังคลิป', icon: 'youtube', make: () => newSection('video') },
+    { label: 'TikTok', sub: 'ฝังคลิป', icon: 'tiktok', make: () => newSection('tiktok') },
+    { label: 'Vimeo', sub: 'ฝังคลิป', icon: 'play', make: () => newSection('vimeo') },
+    { label: 'นามบัตร', sub: 'บันทึกลงรายชื่อได้', icon: 'camera', make: () => newSection('contact') },
+    { label: 'Spotify', sub: 'ฝังเพลง', icon: 'spotify', make: () => newSection('spotify') },
+    { label: 'SoundCloud', sub: 'ฝังเสียง', icon: 'chat', make: () => newSection('soundcloud') },
+    { label: 'Apple Music', sub: 'ฝังเพลง', icon: 'heart', make: () => newSection('applemusic') },
+    { label: 'ฝังเนื้อหา', sub: 'iframe ทั่วไป', art: 'frame', make: () => newSection('embed') },
+    { label: 'เว้นระยะ', sub: 'ช่องไฟ / เส้นคั่น', art: 'spacer', make: () => newSection('spacer') },
+  ] },
+];
+
+function blockArt(block) {
+  if (block.art) {
+    return `<svg class="block-art" viewBox="0 0 48 44" fill="currentColor" aria-hidden="true">${ART[block.art]}</svg>`;
+  }
+  return `<svg class="block-art" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
+    stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[block.icon] || ICONS.link}</svg>`;
+}
+
+function openBlockPicker(onPick) {
+  const body = h('div');
+  for (const group of BLOCK_GROUPS) {
+    body.append(h('h4', { class: 'block-group', text: group.name }));
+    const grid = h('div', { class: 'block-grid' });
+    for (const block of group.blocks) {
+      grid.append(h('button', {
+        class: `block-card${block.wide ? ' wide' : ''}`, type: 'button',
+        onclick: () => { close(); onPick(block.make()); },
+      },
+        h('span', { class: 'block-ic', html: blockArt(block) }),
+        h('span', { class: 'block-tx' },
+          block.badge ? h('span', { class: 'block-badge', text: block.badge }) : null,
+          h('b', { text: block.label }),
+          h('small', { text: block.sub }))));
+    }
+    body.append(grid);
+  }
+  const close = modal('เพิ่มบล็อก', body);
 }
 
 function sectionBody(section) {
-  const common = [
-    textField(section, 'title', 'หัวข้อเซคชัน', { placeholder: 'ไม่ใส่ก็ได้' }),
-    textField(section, 'subtitle', 'คำอธิบายใต้หัวข้อ'),
-  ];
+  const kind = ITEM_KIND[section.type];
+  const heading = textField(section, 'title', 'หัวข้อเซคชัน', { placeholder: 'เว้นว่างไว้ก็ได้' });
+  const headingAdv = textField(section, 'subtitle', 'คำอธิบายใต้หัวข้อ');
+  const items = (addLabel) => itemListEditor(section, kind, { addLabel });
+
   switch (section.type) {
     case 'links':
-      return [...common,
-        selectField(section, 'style', 'รูปแบบ', [['list', 'เรียงเต็มกว้าง'], ['grid', '2 คอลัมน์']]),
-        itemListEditor(section, 'links', { addLabel: 'เพิ่มปุ่ม' })];
+      return [heading, items('เพิ่มปุ่ม'),
+        advanced('ตั้งค่าเซคชัน', headingAdv,
+          segField(section, 'style', 'รูปแบบ', [['list', '1 คอลัมน์'], ['grid', '2 คอลัมน์']]))];
+    case 'catalog':
+      return [heading, items('เพิ่มสินค้า'),
+        advanced('ตั้งค่าเซคชัน', headingAdv,
+          h('div', { class: 'grid2' },
+            segField(section, 'columns', 'คอลัมน์', [['1', '1'], ['2', '2'], ['3', '3']]),
+            textField(section, 'currency', 'สกุลเงิน', { placeholder: 'THB' })))];
     case 'cards':
-      return [...common,
-        h('div', { class: 'grid2' },
+      return [heading, items('เพิ่มการ์ด'),
+        advanced('ตั้งค่าเซคชัน', headingAdv,
           selectField(section, 'layout', 'การวางรูป', [
             ['alternate', 'สลับซ้าย–ขวา'], ['image-left', 'รูปซ้ายทั้งหมด'],
             ['image-right', 'รูปขวาทั้งหมด'], ['stacked', 'รูปบน ข้อความล่าง'],
           ]),
-          selectField(section, 'columns', 'จำนวนคอลัมน์', [['1', '1 คอลัมน์'], ['2', '2 คอลัมน์']])),
-        itemListEditor(section, 'cards', { addLabel: 'เพิ่มการ์ด' })];
+          segField(section, 'columns', 'คอลัมน์', [['1', '1'], ['2', '2']]))];
     case 'gallery':
-      return [...common,
-        h('div', { class: 'grid2' },
-          selectField(section, 'columns', 'คอลัมน์', [['1', '1'], ['2', '2'], ['3', '3']]),
+      return [heading, items('เพิ่มรูป'),
+        advanced('ตั้งค่าเซคชัน', headingAdv,
+          segField(section, 'display', 'การแสดงผล', [['grid', 'ตาราง'], ['slider', 'เลื่อนข้าง']]),
+          segField(section, 'columns', 'คอลัมน์ (เฉพาะตาราง)', [['1', '1'], ['2', '2'], ['3', '3']]),
           selectField(section, 'ratio', 'สัดส่วนรูป', [
             ['square', 'จัตุรัส'], ['portrait', 'แนวตั้ง 3:4'], ['landscape', 'แนวนอน 4:3'], ['auto', 'ตามรูปจริง'],
-          ])),
-        itemListEditor(section, 'gallery', { addLabel: 'เพิ่มรูป' })];
-    case 'video':
-      return [...common, itemListEditor(section, 'video', { addLabel: 'เพิ่มคลิป' })];
+          ]))];
+    case 'video': case 'tiktok': case 'vimeo':
+      return [heading, items('เพิ่มคลิป'), advanced('ตั้งค่าเซคชัน', headingAdv)];
+    case 'spotify': case 'soundcloud': case 'applemusic':
+      return [heading, items('เพิ่มลิงก์เพลง'),
+        advanced('ตั้งค่าเซคชัน', headingAdv,
+          rangeField(section, 'height', 'ความสูงกล่องเล่นเพลง', { min: 80, max: 600, step: 10, unit: 'px' }))];
+    case 'list':
+      return [heading, items('เพิ่มรายการ'), advanced('ตั้งค่าเซคชัน', headingAdv)];
     case 'socials':
-      return [...common, itemListEditor(section, 'socials', { addLabel: 'เพิ่มโซเชียล' })];
+      return [heading, items('เพิ่มโซเชียล'), advanced('ตั้งค่าเซคชัน', headingAdv)];
+    case 'contact':
+      return [
+        imageField(section, 'avatar', 'รูป'),
+        h('div', { class: 'grid2' },
+          textField(section, 'name', 'ชื่อ'),
+          textField(section, 'role', 'ตำแหน่ง / คำอธิบาย')),
+        h('div', { class: 'grid2' },
+          textField(section, 'phone', 'เบอร์โทร'),
+          textField(section, 'email', 'อีเมล')),
+        advanced('ตัวเลือกเพิ่มเติม',
+          heading, headingAdv,
+          textField(section, 'org', 'บริษัท / แบรนด์'),
+          textField(section, 'website', 'เว็บไซต์'),
+          textField(section, 'address', 'ที่อยู่'),
+          textField(section, 'mapUrl', 'ลิงก์แผนที่'),
+          areaField(section, 'note', 'โน้ตเพิ่มเติม', { rows: 2 }),
+          checkField(section, 'vcard', 'แสดงปุ่มบันทึกลงรายชื่อติดต่อ'),
+          textField(section, 'saveLabel', 'ข้อความบนปุ่มบันทึก')),
+      ];
     case 'text':
       return [
         textField(section, 'heading', 'หัวข้อ'),
         areaField(section, 'body', 'ข้อความ', { rows: 4 }),
-        selectField(section, 'align', 'จัดวาง', [['left', 'ชิดซ้าย'], ['center', 'กึ่งกลาง'], ['right', 'ชิดขวา']]),
+        segField(section, 'align', 'จัดวาง', [['left', 'ซ้าย'], ['center', 'กลาง'], ['right', 'ขวา']]),
       ];
     case 'embed':
-      return [...common,
-        textField(section, 'url', 'ลิงก์ iframe (https เท่านั้น)', { sub: 'เช่น ปฏิทินจอง, ฟอร์ม, Spotify embed' }),
-        rangeField(section, 'height', 'ความสูง', { min: 160, max: 900, step: 10, unit: 'px' })];
+      return [
+        textField(section, 'url', 'ลิงก์ iframe (https เท่านั้น)', { sub: 'เช่น ฟอร์ม, ปฏิทินจองคิว, แผนที่' }),
+        rangeField(section, 'height', 'ความสูง', { min: 160, max: 900, step: 10, unit: 'px' }),
+        advanced('ตั้งค่าเซคชัน', heading, headingAdv),
+      ];
     case 'spacer':
       return [
         rangeField(section, 'height', 'ความสูง', { min: 0, max: 120, unit: 'px' }),
         checkField(section, 'divider', 'แสดงเส้นคั่น'),
       ];
     default:
-      return common;
+      return [heading, headingAdv];
   }
 }
 
@@ -496,7 +730,10 @@ function sectionsTab() {
           onclick: () => {
             const copy = structuredClone(section);
             copy.id = uid('sec');
-            (copy.items || []).forEach((it) => { it.id = uid('it'); });
+            (copy.items || []).forEach((it) => {
+              it.id = uid('it');
+              (it.links || []).forEach((l) => { l.id = uid('sl'); });
+            });
             state.sections.splice(index + 1, 0, copy);
             touch();
             paint();
@@ -525,25 +762,24 @@ function sectionsTab() {
   };
   paint();
 
-  const adder = h('div', { class: 'add-row' }, Object.entries(SECTION_TYPES).map(([type, label]) =>
-    h('button', {
-      class: 'btn btn-sm', type: 'button',
-      onclick: () => {
-        const section = newSection(type);
-        state.sections.push(section);
-        openSections.add(section.id);
-        (section.items || []).forEach((it) => openItems.add(it.id));
-        touch();
-        paint();
-      },
-    }, `+ ${label}`)));
+  const addBlock = (section) => {
+    state.sections.push(section);
+    openSections.add(section.id);
+    (section.items || []).forEach((it) => openItems.add(it.id));
+    touch();
+    paint();
+    // Bring the new block into view — it lands at the bottom of a long list.
+    requestAnimationFrame(() => list.lastElementChild?.scrollIntoView({ behavior: 'smooth', block: 'center' }));
+  };
+
+  const adder = h('div', { class: 'add-row' },
+    h('button', { class: 'btn btn-primary', type: 'button', onclick: () => openBlockPicker(addBlock) }, '+ เพิ่มบล็อก'));
 
   return [
     h('div', { class: 'panel' },
-      h('h3', { text: 'เซคชันของหน้าเว็บ' }),
-      h('p', { class: 'hint', text: 'ลากการ์ดหรือกดลูกศรเพื่อสลับลำดับ กด "แก้ไข" เพื่อเปิดรายละเอียด' }),
+      h('h3', { text: 'บล็อกในหน้าเว็บ' }),
+      h('p', { class: 'hint', text: 'ลากการ์ดหรือกดลูกศรเพื่อสลับลำดับ · กด "แก้ไข" เพื่อเปิดรายละเอียด' }),
       list,
-      h('h4', { style: 'margin:16px 0 0;font-size:13px', text: 'เพิ่มเซคชันใหม่' }),
       adder),
   ];
 }
@@ -557,28 +793,25 @@ function headerTab() {
   const paint = () => {
     body.innerHTML = '';
     fill(body,
-      selectField(header, 'layout', 'รูปแบบหัวเว็บ', [
-        ['cover', 'รูปเต็มจอ + ชื่อทับรูป (แบบตัวอย่าง)'],
-        ['banner', 'แบนเนอร์ + รูปโปรไฟล์กลม'],
-        ['avatar', 'รูปโปรไฟล์กลมอย่างเดียว'],
-        ['minimal', 'ข้อความล้วน'],
-      ], { onChange: () => { paint(); } }),
+      segField(header, 'layout', 'รูปแบบหัวเว็บ', [
+        ['cover', 'รูปเต็มจอ'], ['banner', 'แบนเนอร์'], ['avatar', 'รูปกลม'], ['minimal', 'ข้อความ'],
+      ], { onChange: paint, sub: header.layout === 'cover' ? 'ชื่อจะทับอยู่บนรูป แบบเดียวกับตัวอย่าง' : '' }),
       header.layout === 'cover' || header.layout === 'banner' ? imageField(header, 'coverImage', 'รูปปก') : null,
-      header.layout === 'cover' ? rangeField(header, 'coverHeight', 'ความสูงรูปปก', { min: 200, max: 700, step: 10, unit: 'px' }) : null,
-      header.layout === 'cover' ? rangeField(header, 'overlay', 'ความเข้มเงาทับรูป', { min: 0, max: 1, step: 0.05 }) : null,
       header.layout === 'banner' || header.layout === 'avatar' ? imageField(header, 'avatar', 'รูปโปรไฟล์') : null,
       textField(header, 'title', 'ชื่อ / ชื่อแบรนด์'),
-      rangeField(header, 'titleSize', 'ขนาดตัวอักษรชื่อ', { min: 22, max: 64, unit: 'px' }),
-      areaField(header, 'subtitle', 'ข้อความรอง', { rows: 2 }),
-      areaField(header, 'bio', 'คำแนะนำตัว', { rows: 3 }),
-      selectField(header, 'align', 'จัดวางข้อความ', [['center', 'กึ่งกลาง'], ['left', 'ชิดซ้าย']]),
-      checkField(header, 'showSocials', 'แสดงแถวไอคอนโซเชียลบนหัวเว็บ'),
-    );
+      textField(header, 'subtitle', 'ข้อความรอง'),
+      areaField(header, 'bio', 'คำแนะนำตัว', { rows: 2 }),
+      advanced('ปรับละเอียด',
+        rangeField(header, 'titleSize', 'ขนาดตัวอักษรชื่อ', { min: 22, max: 64, unit: 'px' }),
+        segField(header, 'align', 'จัดวางข้อความ', [['center', 'กึ่งกลาง'], ['left', 'ชิดซ้าย']]),
+        header.layout === 'cover' ? rangeField(header, 'coverHeight', 'ความสูงรูปปก', { min: 200, max: 700, step: 10, unit: 'px' }) : null,
+        header.layout === 'cover' ? rangeField(header, 'overlay', 'ความเข้มเงาทับรูป', { min: 0, max: 1, step: 0.05 }) : null,
+        checkField(header, 'showSocials', 'แสดงแถวไอคอนโซเชียลบนหัวเว็บ')));
   };
   paint();
 
   return [
-    h('div', { class: 'panel' }, h('h3', { text: 'หัวเว็บ (Header)' }),
+    h('div', { class: 'panel' }, h('h3', { text: 'หัวเว็บ' }),
       h('p', { class: 'hint', text: 'ส่วนบนสุดของหน้า — รูปปก ชื่อ และคำแนะนำตัว' }), body),
     h('div', { class: 'panel' }, h('h3', { text: 'ไอคอนโซเชียล' }),
       h('p', { class: 'hint', text: 'แถวไอคอนกลมใต้ชื่อ' }),
@@ -604,49 +837,57 @@ function themeTab() {
   const paintBg = () => {
     bgBox.innerHTML = '';
     fill(bgBox,
-      selectField(theme, 'bgType', 'ชนิดพื้นหลัง', [
+      segField(theme, 'bgType', 'ชนิดพื้นหลัง', [
         ['solid', 'สีเดียว'], ['gradient', 'ไล่สี'], ['image', 'รูปภาพ'],
-      ], { onChange: () => paintBg() }),
-      colorField(theme, 'bg', 'สีพื้นหลังหลัก'),
+      ], { onChange: paintBg }),
+      colorField(theme, 'bg', 'สีพื้นหลัง'),
       theme.bgType === 'gradient' ? h('div', { class: 'grid2' },
         colorField(theme, 'bgGradientFrom', 'ไล่สีจาก'),
         colorField(theme, 'bgGradientTo', 'ไล่สีไป')) : null,
       theme.bgType === 'image' ? imageField(theme, 'bgImage', 'รูปพื้นหลัง') : null,
-      theme.bgType === 'image' ? rangeField(theme, 'bgImageDim', 'ความเข้มสีทับรูป', { min: 0, max: 1, step: 0.05 }) : null,
-    );
+      theme.bgType === 'image' ? rangeField(theme, 'bgImageDim', 'ความเข้มสีทับรูป', { min: 0, max: 1, step: 0.05 }) : null);
   };
   paintBg();
 
-  const presetRow = h('div', { class: 'add-row' }, Object.entries(PRESETS).map(([name, preset]) =>
+  const presetRow = h('div', { class: 'preset-row' }, Object.entries(PRESETS).map(([name, preset]) =>
     h('button', {
-      class: 'btn btn-sm', type: 'button',
+      class: 'preset', type: 'button', title: name,
       onclick: () => { Object.assign(state.theme, preset); touch(); renderTab(); },
-    }, name)));
+    },
+      h('span', {
+        class: 'preset-chip',
+        style: `background:${preset.bgType === 'gradient'
+          ? `linear-gradient(160deg,${preset.bgGradientFrom},${preset.bgGradientTo})` : preset.bg};
+          border-color:${preset.cardBorder}`,
+      }, h('i', { style: `background:${preset.accent}` }), h('i', { style: `background:${preset.card}` })),
+      h('small', { text: name }))));
 
   return [
     h('div', { class: 'panel' },
       h('h3', { text: 'ชุดสีสำเร็จรูป' }),
-      h('p', { class: 'hint', text: 'กดเลือกเพื่อเปลี่ยนทั้งชุด แล้วค่อยปรับทีละสีด้านล่างได้' }),
+      h('p', { class: 'hint', text: 'กดเลือกแล้วดูผลทันทีทางขวา' }),
       presetRow),
+    h('div', { class: 'panel' },
+      h('h3', { text: 'หน้าตาโดยรวม' }),
+      h('p', { class: 'hint', text: '' }),
+      selectField(theme, 'font', 'ฟอนต์', Object.entries(FONTS).map(([k, v]) => [k, v.label])),
+      segField(theme, 'buttonStyle', 'สไตล์ปุ่ม', [['soft', 'พื้นอ่อน'], ['solid', 'ทึบ'], ['outline', 'เส้นขอบ']]),
+      rangeField(theme, 'radius', 'ความมนของมุม', { min: 0, max: 36, unit: 'px' }),
+      advanced('ปรับละเอียด',
+        rangeField(theme, 'maxWidth', 'ความกว้างสูงสุดของหน้า', { min: 380, max: 900, step: 10, unit: 'px' }),
+        checkField(theme, 'cardShadow', 'ใส่เงาให้การ์ด'))),
     h('div', { class: 'panel' }, h('h3', { text: 'พื้นหลัง' }), bgBox),
     h('div', { class: 'panel' },
-      h('h3', { text: 'สี' }),
-      h('div', { class: 'grid2' },
-        colorField(theme, 'text', 'สีตัวอักษร'),
-        colorField(theme, 'muted', 'สีตัวอักษรรอง'),
-        colorField(theme, 'card', 'สีพื้นการ์ด/ปุ่ม'),
-        colorField(theme, 'cardBorder', 'สีเส้นขอบ'),
-        colorField(theme, 'accent', 'สีหลัก (ปุ่มเด่น/ป้าย)'),
-        colorField(theme, 'accentText', 'สีตัวอักษรบนสีหลัก'))),
-    h('div', { class: 'panel' },
-      h('h3', { text: 'ตัวอักษรและรูปทรง' }),
-      selectField(theme, 'font', 'ฟอนต์', Object.entries(FONTS).map(([k, v]) => [k, v.label])),
-      selectField(theme, 'buttonStyle', 'สไตล์ปุ่ม', [
-        ['soft', 'พื้นอ่อน (soft)'], ['solid', 'ทึบสีหลัก (solid)'], ['outline', 'เส้นขอบ (outline)'],
-      ]),
-      rangeField(theme, 'radius', 'ความมนของมุม', { min: 0, max: 36, unit: 'px' }),
-      rangeField(theme, 'maxWidth', 'ความกว้างสูงสุดของหน้า', { min: 380, max: 900, step: 10, unit: 'px' }),
-      checkField(theme, 'cardShadow', 'ใส่เงาให้การ์ด')),
+      h('h3', { text: 'สีแต่ละส่วน' }),
+      h('p', { class: 'hint', text: 'เปิดเมื่ออยากจูนเองทีละสี' }),
+      advanced('ปรับสีเอง',
+        h('div', { class: 'grid2' },
+          colorField(theme, 'text', 'สีตัวอักษร'),
+          colorField(theme, 'muted', 'สีตัวอักษรรอง'),
+          colorField(theme, 'card', 'สีพื้นการ์ด/ปุ่ม'),
+          colorField(theme, 'cardBorder', 'สีเส้นขอบ'),
+          colorField(theme, 'accent', 'สีหลัก (ปุ่มเด่น/ป้าย)'),
+          colorField(theme, 'accentText', 'สีตัวอักษรบนสีหลัก')))),
   ];
 }
 
@@ -705,23 +946,23 @@ function settingsTab() {
   return [
     h('div', { class: 'panel' },
       h('h3', { text: 'SEO และการแชร์' }),
-      h('p', { class: 'hint', text: 'ข้อความที่โชว์บน Google และตอนแปะลิงก์ลงแชต' }),
+      h('p', { class: 'hint', text: 'ข้อความและรูปที่โชว์บน Google และตอนแปะลิงก์ลงแชต' }),
       textField(site, 'metaTitle', 'ชื่อหน้า (title)'),
       areaField(site, 'metaDescription', 'คำอธิบายหน้า', { rows: 2 }),
-      imageField(site, 'ogImage', 'รูปตอนแชร์ลิงก์ (OG image)', { sub: 'แนะนำ 1200 × 630 px' }),
-      imageField(site, 'favicon', 'ไอคอนแท็บเบราว์เซอร์')),
+      imageField(site, 'ogImage', 'รูปตอนแชร์ลิงก์', { sub: 'แนะนำ 1200 × 630 px' }),
+      advanced('ตัวเลือกเพิ่มเติม',
+        imageField(site, 'favicon', 'ไอคอนแท็บเบราว์เซอร์'),
+        textField(site, 'footerText', 'ข้อความท้ายหน้า'),
+        checkField(site, 'showCredit', 'แสดงเครดิต "สร้างด้วย LinkHub"'))),
     h('div', { class: 'panel' },
-      h('h3', { text: 'ท้ายหน้าและโค้ดเสริม' }),
-      textField(site, 'footerText', 'ข้อความท้ายหน้า'),
-      checkField(site, 'showCredit', 'แสดงเครดิต "สร้างด้วย LinkHub"'),
-      areaField(site, 'customCss', 'CSS เพิ่มเติม', { rows: 4, sub: 'สำหรับคนที่อยากปรับละเอียด' })),
-    h('div', { class: 'panel' },
-      h('h3', { text: 'Tracking' }),
+      h('h3', { text: 'Tracking และโค้ดเสริม' }),
       h('p', { class: 'hint', text: 'ใส่เฉพาะ ID ไม่ต้องใส่โค้ดทั้งก้อน' }),
-      h('div', { class: 'grid3' },
-        textField(site, 'gaId', 'Google Analytics', { placeholder: 'G-XXXXXXX' }),
-        textField(site, 'metaPixelId', 'Meta Pixel', { placeholder: '1234567890' }),
-        textField(site, 'tiktokPixelId', 'TikTok Pixel', { placeholder: 'CXXXXXXXXXX' }))),
+      advanced('ใส่ ID / CSS',
+        h('div', { class: 'grid3' },
+          textField(site, 'gaId', 'Google Analytics', { placeholder: 'G-XXXXXXX' }),
+          textField(site, 'metaPixelId', 'Meta Pixel', { placeholder: '1234567890' }),
+          textField(site, 'tiktokPixelId', 'TikTok Pixel', { placeholder: 'CXXXXXXXXXX' })),
+        areaField(site, 'customCss', 'CSS เพิ่มเติม', { rows: 4, sub: 'สำหรับคนที่อยากปรับละเอียด' }))),
     h('div', { class: 'panel' },
       h('h3', { text: 'คลังรูปที่อัปโหลด' }),
       h('p', { class: 'hint', text: 'คลิกที่รูปเพื่อคัดลอกลิงก์' }),
@@ -744,6 +985,7 @@ function settingsTab() {
         importFile)),
     h('div', { class: 'panel' },
       h('h3', { text: 'เปลี่ยนรหัสผ่าน' }),
+      h('p', { class: 'hint', text: 'รหัสที่ใช้เข้าหลังบ้านนี้' }),
       pwMsg,
       wrapField('รหัสผ่านปัจจุบัน', pwCurrent),
       wrapField('รหัสผ่านใหม่ (อย่างน้อย 8 ตัว)', pwNext),
@@ -837,11 +1079,11 @@ function statsTab() {
 /* ------------------------------------------------------------- shell */
 
 const TABS = [
-  ['sections', 'เซคชัน'],
   ['header', 'หัวเว็บ'],
+  ['sections', 'บล็อก'],
   ['theme', 'ธีม'],
-  ['settings', 'ตั้งค่า'],
   ['stats', 'สถิติ'],
+  ['settings', 'ตั้งค่า'],
 ];
 
 function renderTabs() {
@@ -858,8 +1100,8 @@ function renderTabs() {
 function renderTab() {
   const host = $('#panel-content');
   host.innerHTML = '';
-  const views = { sections: sectionsTab, header: headerTab, theme: themeTab, settings: settingsTab, stats: statsTab };
-  host.append(...(views[activeTab] || sectionsTab)());
+  const views = { header: headerTab, sections: sectionsTab, theme: themeTab, stats: statsTab, settings: settingsTab };
+  host.append(...(views[activeTab] || headerTab)());
 }
 
 async function save() {

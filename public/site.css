@@ -186,6 +186,111 @@ p { margin: 0; }
   background: linear-gradient(to top, rgb(0 0 0 / .78), transparent);
 }
 
+.gallery[data-display="slider"] {
+  display: flex; grid-template-columns: none;
+  overflow-x: auto; scroll-snap-type: x mandatory;
+  margin: 0 -20px; padding: 2px 20px 10px;
+  scrollbar-width: none;
+}
+.gallery[data-display="slider"]::-webkit-scrollbar { display: none; }
+.gallery[data-display="slider"] .gal { flex: 0 0 78%; scroll-snap-align: center; }
+.gallery[data-display="slider"][data-size="square"] .gal { flex-basis: 46%; }
+.gallery[data-display="slider"] .gal img { aspect-ratio: 4 / 5; }
+.gallery[data-display="slider"][data-size="square"] .gal img { aspect-ratio: 1 / 1; }
+
+/* ------------------------------------------------------ product catalog */
+
+.catalog { display: grid; gap: 12px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.catalog[data-cols="1"] { grid-template-columns: 1fr; }
+.catalog[data-cols="3"] { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+
+.prod {
+  display: flex; flex-direction: column; overflow: hidden;
+  background: var(--card); border: 1px solid var(--card-border);
+  border-radius: var(--radius); box-shadow: var(--shadow);
+}
+.prod-media { position: relative; }
+.prod-media img { width: 100%; aspect-ratio: 1 / 1; object-fit: cover; }
+.prod-badge {
+  position: absolute; top: 8px; left: 8px;
+  font-size: 10px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase;
+  padding: 4px 9px; border-radius: 999px;
+  background: var(--accent); color: var(--accent-text);
+}
+.prod-body { padding: 12px; display: flex; flex-direction: column; gap: 6px; flex: 1; }
+.prod-badge.inline { position: static; align-self: flex-start; }
+.prod-title { font-size: 15px; font-weight: 700; }
+.prod-desc {
+  font-size: 13px; color: var(--muted); line-height: 1.5;
+  display: -webkit-box; -webkit-line-clamp: 3; line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+}
+.prod-price { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; margin-top: auto; }
+.prod-price b { font-size: 17px; font-weight: 800; }
+.prod-price s { font-size: 13px; color: var(--muted); }
+.prod-cur { font-size: 11px; color: var(--muted); font-weight: 600; }
+
+.prod-links { display: flex; flex-wrap: wrap; gap: 6px; }
+.prod-link, .prod-buy {
+  display: inline-flex; align-items: center; justify-content: center; gap: 5px;
+  font-size: 12px; font-weight: 600; padding: 7px 11px; border-radius: 999px;
+  border: 1px solid var(--card-border);
+  background: color-mix(in srgb, var(--text) 7%, transparent);
+  transition: filter .15s ease, border-color .15s ease;
+}
+.prod-buy {
+  width: 100%; padding: 10px 14px; font-size: 13px;
+  background: var(--accent); color: var(--accent-text); border-color: transparent;
+}
+.prod-link:hover, .prod-buy:hover { filter: brightness(1.12); border-color: var(--accent); }
+.ic.sm { width: 16px; height: 16px; }
+
+/* --------------------------------------------------- list & contact card */
+
+.list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.list-row { margin: 0; }
+.list-hit {
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 14px; border-radius: var(--radius);
+  background: var(--card); border: 1px solid var(--card-border);
+  transition: transform .15s ease, border-color .15s ease;
+}
+a.list-hit:hover { transform: translateY(-1px); border-color: var(--accent); }
+.list-tx { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.list-l { font-size: 11px; font-weight: 600; color: var(--muted); letter-spacing: .02em; }
+.list-v { font-size: 14px; font-weight: 600; word-break: break-word; }
+
+.vcard {
+  display: flex; flex-direction: column; gap: 12px;
+  padding: 16px; border-radius: var(--radius);
+  background: var(--card); border: 1px solid var(--card-border); box-shadow: var(--shadow);
+}
+.vcard .list-hit { background: color-mix(in srgb, var(--text) 5%, transparent); }
+.vcard-top { display: flex; align-items: center; gap: 14px; }
+.vcard-pic {
+  width: 64px; height: 64px; flex: none; border-radius: 50%; overflow: hidden;
+  background: color-mix(in srgb, var(--text) 10%, transparent);
+}
+.vcard-pic img { width: 100%; height: 100%; object-fit: cover; }
+.vcard-name { font-size: 19px; font-weight: 800; }
+.vcard-role { font-size: 13px; color: var(--muted); }
+.vcard-org { font-size: 13px; font-weight: 600; }
+.vcard-note { font-size: 13px; color: var(--muted); line-height: 1.6; }
+.vcard-save {
+  display: flex; align-items: center; justify-content: center; gap: 7px;
+  padding: 12px; border-radius: 999px; font-size: 14px; font-weight: 700;
+  background: var(--accent); color: var(--accent-text);
+}
+.vcard-save:hover { filter: brightness(1.1); }
+
+/* ------------------------------------------------- platform embed frames */
+
+.audios { display: flex; flex-direction: column; gap: 12px; }
+.pframe {
+  width: 100%; border-radius: var(--radius); overflow: hidden;
+  background: color-mix(in srgb, var(--text) 6%, transparent);
+}
+.pframe iframe { width: 100%; height: 100%; border: 0; display: block; }
+
 /* video + embed */
 .videos { display: flex; flex-direction: column; gap: 14px; }
 .video { margin: 0; }
@@ -219,6 +324,9 @@ p { margin: 0; }
   .card-title { font-size: 15px; }
   .card-sub { font-size: 13px; }
   .stack { padding-left: 16px; padding-right: 16px; gap: 22px; }
+  .gallery[data-display="slider"] { margin-left: -16px; margin-right: -16px; padding-left: 16px; padding-right: 16px; }
+  .catalog[data-cols="3"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .prod-title { font-size: 14px; }
   .head-below, .cover-inner { padding-left: 16px; padding-right: 16px; }
 }
 
@@ -228,4 +336,11 @@ p { margin: 0; }
 
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; animation: none !important; }
+}
+
+/* Editor-only hint for a block with nothing in it yet (never on the live page). */
+.sec-empty {
+  padding: 18px; border-radius: var(--radius);
+  border: 1px dashed var(--card-border);
+  font-size: 13px; color: var(--muted); text-align: center;
 }

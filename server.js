@@ -272,6 +272,19 @@ async function handle(req, res) {
     return send(res, 404, 'Not Found', { 'Content-Type': MIME['.txt'] });
   }
 
+  // Downloadable contact card for a `contact` section.
+  if (route.startsWith('/vcard/')) {
+    const id = decodeURIComponent(route.slice('/vcard/'.length)).replace(/\.vcf$/i, '');
+    const section = (store.data.sections || []).find((s) => s.id === id && s.type === 'contact');
+    if (!section) return send(res, 404, 'Not Found', { 'Content-Type': MIME['.txt'] });
+    const name = section.name || store.data.header?.title || 'contact';
+    return send(res, 200, buildVcard(section, name), {
+      'Content-Type': 'text/vcard; charset=utf-8',
+      'Content-Disposition': `attachment; filename="${name.replace(/[^\w.-]+/g, '_') || 'contact'}.vcf"`,
+      'Cache-Control': 'no-cache',
+    });
+  }
+
   // Uploaded media.
   if (route.startsWith('/u/')) {
     const file = safeJoin(store.uploads, route.slice(3));
@@ -289,6 +302,23 @@ async function handle(req, res) {
   if (asset && await serveFile(res, asset)) return;
 
   return send(res, 404, 'Not Found', { 'Content-Type': MIME['.txt'] });
+}
+
+/** Minimal vCard 3.0 — enough for iOS and Android to file the contact. */
+function buildVcard(section, name) {
+  const escape = (v) => String(v ?? '').replace(/\\/g, '\\\\').replace(/([,;])/g, '\\$1').replace(/\r?\n/g, '\\n');
+  const lines = ['BEGIN:VCARD', 'VERSION:3.0', `FN:${escape(name)}`];
+  const parts = String(name).trim().split(/\s+/);
+  lines.push(`N:${escape(parts.slice(1).join(' '))};${escape(parts[0] || '')};;;`);
+  if (section.org) lines.push(`ORG:${escape(section.org)}`);
+  if (section.role) lines.push(`TITLE:${escape(section.role)}`);
+  if (section.phone) lines.push(`TEL;TYPE=CELL:${escape(section.phone)}`);
+  if (section.email) lines.push(`EMAIL;TYPE=INTERNET:${escape(section.email)}`);
+  if (section.website) lines.push(`URL:${escape(section.website)}`);
+  if (section.address) lines.push(`ADR;TYPE=WORK:;;${escape(section.address)};;;;`);
+  if (section.note) lines.push(`NOTE:${escape(section.note)}`);
+  lines.push('END:VCARD');
+  return `${lines.join('\r\n')}\r\n`;
 }
 
 /* ----------------------------------------------------------------- boot */
