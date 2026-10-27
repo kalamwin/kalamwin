@@ -1,0 +1,15 @@
+{
+  "name": "linkhub",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Link-in-bio landing page builder with a custom admin backend (zero dependencies)",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

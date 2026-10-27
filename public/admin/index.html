@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>LinkHub — หลังบ้าน</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;500;600;700;800&display=swap">
+<link rel="stylesheet" href="/admin/admin.css">
+</head>
+<body>
+
+<!-- login ---------------------------------------------------------- -->
+<div id="login" class="login-wrap hidden">
+  <form class="login-card" id="login-form">
+    <h2>LinkHub <span>หลังบ้าน</span></h2>
+    <p>ใส่รหัสผ่านเพื่อเข้าไปแก้ไขหน้าเว็บ</p>
+    <div id="login-msg"></div>
+    <div class="field">
+      <label for="login-pw">รหัสผ่าน</label>
+      <input type="password" id="login-pw" autocomplete="current-password" required>
+    </div>
+    <button class="btn btn-primary" style="width:100%;justify-content:center" type="submit">เข้าสู่ระบบ</button>
+  </form>
+</div>
+
+<!-- app ------------------------------------------------------------ -->
+<div id="app" class="hidden">
+  <header class="topbar">
+    <div class="logo">Link<span>Hub</span></div>
+    <span class="save-state" id="save-state">บันทึกแล้ว</span>
+    <div class="spacer"></div>
+    <a class="btn btn-ghost btn-sm" href="/" target="_blank" rel="noopener">เปิดหน้าเว็บจริง ↗</a>
+    <button class="btn btn-sm" id="btn-logout" type="button">ออกจากระบบ</button>
+    <button class="btn btn-primary" id="btn-save" type="button">บันทึก</button>
+  </header>
+
+  <div class="layout">
+    <div>
+      <nav class="tabs" id="tabs"></nav>
+      <div id="panel-content"></div>
+    </div>
+
+    <aside class="preview-wrap" id="preview-wrap">
+      <div class="preview-card">
+        <div class="preview-head">
+          <h3>ตัวอย่างสด</h3>
+          <button class="btn btn-sm btn-ghost" id="btn-wide" type="button">สลับขนาด</button>
+          <button class="btn btn-sm btn-ghost" id="btn-reload" type="button">รีเฟรช</button>
+        </div>
+        <div class="phone"><iframe id="preview" title="ตัวอย่างหน้าเว็บ"></iframe></div>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+<script type="module" src="/admin/admin.js"></script>
+</body>
+</html>
